@@ -4,20 +4,48 @@ import random
 import uuid
 import os
 import time
+import argparse
 
 random.seed(42)
 app = Flask(__name__)
+app.jinja_env.globals.update(enumerate=enumerate)  # Make enumerate available in templates
 
+# Global variables
 SESSIONS = dict()
 INPUT_JSONL = 'data'
 BATCH_COUNT_FILE = 'batch_count.json'
+TRIAL_MODE = False
+batch_size = 30
+data = None
+batches = None
+batch_counts = None
+
+def init_app(trial_mode=False):
+    """Initialize app settings based on mode"""
+    global INPUT_JSONL, BATCH_COUNT_FILE, TRIAL_MODE, batch_size, data, batches, batch_counts
+    
+    TRIAL_MODE = trial_mode
+    if TRIAL_MODE:
+        INPUT_JSONL = 'data_with_gpt_trial'
+        BATCH_COUNT_FILE = 'batch_count_trial.json'
+        batch_size = 5
+        print("Running in trial mode")
+    else:
+        INPUT_JSONL = 'data_with_gpt'
+        BATCH_COUNT_FILE = 'batch_count.json'
+        batch_size = 30
+        print("Running in full mode")
+
+    # Initialize all data-dependent variables
+    data = load_data()
+    print("Total length of data: ", len(data))
+    batches = shuffle_and_batch_data(data, batch_size)
+    print("Total length of batches: ", len(batches))
+    batch_counts = initialize_batch_counts(batches)
 
 def load_data():
     with open(f'{INPUT_JSONL}.jsonl', 'r') as file:
         return [json.loads(line) for line in file]
-
-data = load_data()
-print("Total length of data: ", len(data))
 
 def shuffle_and_batch_data(data, batch_size):
     random.shuffle(data)
@@ -27,10 +55,6 @@ def shuffle_and_batch_data(data, batch_size):
         batch_id = i // batch_size + 1
         batches_with_ids.append({'batch_id': batch_id, 'batch_data': batch})
     return batches_with_ids
-
-batch_size = 30
-batches = shuffle_and_batch_data(data, batch_size)
-print("Total length of batches: ", len(batches))
 
 def initialize_batch_counts(batches):
     if not os.path.exists(BATCH_COUNT_FILE):
@@ -51,10 +75,6 @@ def save_batch_counts(batch_counts):
 def get_least_assigned_batch(batch_counts):
     """Get the batch with the lowest assignment count."""
     return min(batch_counts, key=batch_counts.get)
-
-
-# Initialize batch counts on application start
-batch_counts = initialize_batch_counts(batches)
 
 def generate_session_id():
     return str(uuid.uuid4())
@@ -93,7 +113,6 @@ def save_annotation_to_file(session_data):
 
     print(f"Saved annotation to {response_file}")
 
-
 @app.route('/')
 def intro():
     return render_template('introduction.html')
@@ -105,7 +124,6 @@ def success():
 @app.route('/failure')
 def failure():
     return render_template('failure.html')
-
 
 @app.route('/prolific')
 def prolific():
@@ -140,7 +158,6 @@ def save_prolific():
     session['index'] = 0
     return redirect(url_for('design_tool'))
 
-
 @app.route('/design_tool')
 def design_tool():
     return render_template('design_tool_usage.html')
@@ -151,7 +168,6 @@ def save_design_tool():
     session['design_usage'] = design_usage
     return redirect(url_for('adobe_app'))
 
-
 @app.route('/adobe_app')
 def adobe_app():
     return render_template('adobe_app.html')
@@ -161,7 +177,6 @@ def save_adobe_app():
     adobe_app = request.form.get('adobe_app')
     session['adobe_app'] = adobe_app
     return redirect(url_for('start'))
-
 
 @app.route('/start')
 def start():
@@ -186,6 +201,14 @@ def annotate():
     user_query = current_data['user_query']
     design_choices = current_data['design_choices']
     images = current_data['images']
+    # Get GPT answer if it exists in the data
+    gpt_answer = current_data.get('gpt_answer', {
+        'overall_confidence': 'N/A',
+        'background_color': {'suggestion': 'N/A', 'confidence': 'N/A'},
+        'text_elements': {'suggestions': [], 'confidence': 'N/A'},
+        'visual_elements': {'suggestions': [], 'confidence': 'N/A'},
+        'review_notes': []
+    })
 
     if request.method == 'POST':
         background_color = request.form.get('background_color')
@@ -225,8 +248,17 @@ def annotate():
         session['index'] = index + 1
         return redirect(url_for('annotate'))
 
-    return render_template('annotation_r.html', index=index, user_query=user_query, design_choices=design_choices, images=images)
-
+    return render_template('annotation_r.html', 
+                         index=index, 
+                         user_query=user_query, 
+                         design_choices=design_choices, 
+                         images=images,
+                         gpt_answer=gpt_answer)
 
 if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description='Run annotation web app')
+    parser.add_argument('--trial', action='store_true', help='Run in trial mode')
+    args = parser.parse_args()
+    
+    init_app(trial_mode=args.trial)
     app.run(debug=True, host='0.0.0.0', port=5001)
