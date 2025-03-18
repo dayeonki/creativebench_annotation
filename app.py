@@ -218,7 +218,8 @@ def annotate():
         if 'text' in design_choices:
             for text_item in design_choices['text'].keys():
                 alignment_response = request.form.get(text_item)
-                text_alignments[text_item] = alignment_response
+                text_item_r = text_item.replace("_", " ")
+                text_alignments[text_item_r] = alignment_response
 
         image_ranks = {}
         for i, image_set in enumerate(images):
@@ -247,6 +248,10 @@ def annotate():
 
         session['index'] = index + 1
         return redirect(url_for('annotate'))
+
+    # Replace _ to " " in images
+    for image in images:
+        image["content"] = image["content"].replace("_", " ")
 
     return render_template('annotation_r.html', 
                          index=index, 
