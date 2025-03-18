@@ -5,12 +5,6 @@ __pycache__
 *.pyw
 *.pyz
 
-*.log
-*.log.*
-*.log.*.*
-*.log.*.*.*
-*.log.*.*.*.*
-*.log.*.*.*.*.*
-*.log.*.*.*.*.*.*
+
 
 .DS_Store
